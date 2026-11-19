@@ -25,7 +25,7 @@ spec:
       containers:
         - name: webhook
           # Tag for humans, digest for the machine: the digest is what is pulled.
-          image: ghcr.io/lapidda/cert-manager-webhook-inwx:v0.1.0
+          image: ghcr.io/lapidda/cert-manager-webhook-inwx:v0.1.0@sha256:3b14202dc0c8ebd0af20918543b7a1b9b47edefeb00fa17f79ad7fb304ee2d4a
           args:
             # 8443, not 443: a non-root process cannot bind ports below 1024.
             - --secure-port=8443
