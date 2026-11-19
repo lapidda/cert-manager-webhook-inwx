@@ -217,3 +217,7 @@ and push it to GHCR; the job summary shows the digest. Reference the image
 as `ghcr.io/lapidda/cert-manager-webhook-inwx:vX.Y.Z@sha256:...` in
 `deploy/deployment.yaml`: the tag is for humans, the digest is what the
 kubelet pulls and cannot be moved.
+
+## License
+
+Apache License 2.0, see [LICENSE](LICENSE). The same license as cert-manager and its webhook example.
