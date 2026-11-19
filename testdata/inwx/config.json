@@ -1,0 +1,5 @@
+{
+  "sandbox": true,
+  "usernameSecretRef": { "name": "inwx-credentials", "key": "username" },
+  "passwordSecretRef": { "name": "inwx-credentials", "key": "password" }
+}

@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inwx-webhook
+  namespace: cert-manager
+  labels:
+    app.kubernetes.io/name: inwx-webhook
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: inwx-webhook
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: inwx-webhook
+    spec:
+      serviceAccountName: inwx-webhook
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: webhook
+          # Tag for humans, digest for the machine: the digest is what is pulled.
+          image: ghcr.io/lapidda/cert-manager-webhook-inwx:v0.1.0
+          args:
+            # 8443, not 443: a non-root process cannot bind ports below 1024.
+            - --secure-port=8443
+            - --tls-cert-file=/tls/tls.crt
+            - --tls-private-key-file=/tls/tls.key
+            - --v=2
+          env:
+            - name: GROUP_NAME
+              value: acme.p5y.de
+          ports:
+            - name: https
+              containerPort: 8443
+          livenessProbe:
+            httpGet: { scheme: HTTPS, path: /healthz, port: https }
+            periodSeconds: 20
+          readinessProbe:
+            httpGet: { scheme: HTTPS, path: /healthz, port: https }
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 10m, memory: 48Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tls
+              mountPath: /tls
+              readOnly: true
+      volumes:
+        - name: tls
+          secret:
+            secretName: inwx-webhook-serving

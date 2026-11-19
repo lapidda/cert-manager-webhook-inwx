@@ -1,0 +1,21 @@
+# Registers the API group acme.p5y.de/v1alpha1 with kube-apiserver and tells
+# it to proxy that group to our Service. cert-manager reaches the solver by
+# POSTing a ChallengePayload to this API, never by calling the pod directly.
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  name: v1alpha1.acme.p5y.de
+  labels:
+    app.kubernetes.io/name: inwx-webhook
+  annotations:
+    # cainjector fills spec.caBundle from the CA of this Certificate.
+    cert-manager.io/inject-ca-from: cert-manager/inwx-webhook-serving
+spec:
+  group: acme.p5y.de
+  version: v1alpha1
+  groupPriorityMinimum: 1000
+  versionPriority: 15
+  service:
+    name: inwx-webhook
+    namespace: cert-manager
+    port: 443

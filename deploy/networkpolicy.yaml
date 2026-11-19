@@ -1,0 +1,61 @@
+# NetworkPolicies are additive allow-lists; these select only the webhook pod
+# and sit on top of the default-deny of the namespace.
+# Ports are the ones seen AFTER Service DNAT: the pod port 8443 (Service 443),
+# and for the Kubernetes API both the ClusterIP form (10.43.0.1:443) and the
+# node endpoint it is translated to (192.168.178.75:6443).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: inwx-webhook-ingress
+  namespace: cert-manager
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: inwx-webhook
+  policyTypes: ["Ingress"]
+  ingress:
+    # kube-apiserver runs on the host network, so no pod selector can match
+    # its source address: allow any source on the serving port. The port
+    # still requires TLS plus authn/authz delegated to kube-apiserver.
+    - ports:
+        - protocol: TCP
+          port: 8443
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: inwx-webhook-egress
+  namespace: cert-manager
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: inwx-webhook
+  policyTypes: ["Egress"]
+  egress:
+    # DNS (to resolve api.domrobot.com)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    # Kubernetes API (read the Secret, delegated auth)
+    - to:
+        - ipBlock: { cidr: 10.43.0.1/32 }
+      ports:
+        - { protocol: TCP, port: 443 }
+    - to:
+        - ipBlock: { cidr: 192.168.178.75/32 }
+      ports:
+        - { protocol: TCP, port: 6443 }
+    # INWX API: HTTPS to the internet only, never to private ranges.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+      ports:
+        - { protocol: TCP, port: 443 }

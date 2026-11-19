@@ -1,0 +1,7 @@
+.git
+.github
+deploy
+examples
+testdata
+_out
+*.md

@@ -1,0 +1,115 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: inwx-webhook
+  namespace: cert-manager
+  labels:
+    app.kubernetes.io/name: inwx-webhook
+---
+# 1. Read the INWX credentials: `get` on exactly one Secret, nothing else.
+#    (No list/watch: those cannot be restricted by resourceNames.)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: inwx-webhook:credentials-reader
+  namespace: cert-manager
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["inwx-credentials"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: inwx-webhook:credentials-reader
+  namespace: cert-manager
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: inwx-webhook:credentials-reader
+subjects:
+  - kind: ServiceAccount
+    name: inwx-webhook
+    namespace: cert-manager
+---
+# 2. Aggregated API servers read the kube-system ConfigMap
+#    "extension-apiserver-authentication" to learn which client CA
+#    kube-apiserver uses when it proxies requests to them.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: inwx-webhook:auth-reader
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+  - kind: ServiceAccount
+    name: inwx-webhook
+    namespace: cert-manager
+---
+# 3. ...and delegate authn/authz decisions back to kube-apiserver
+#    (TokenReview / SubjectAccessReview).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: inwx-webhook:auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: inwx-webhook
+    namespace: cert-manager
+---
+# 4. Who may call the solver: only the cert-manager controller may "create"
+#    resources in our API group. This is what stops any other workload from
+#    asking the webhook to write TXT records.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: inwx-webhook:domain-solver
+rules:
+  - apiGroups: ["acme.p5y.de"]
+    resources: ["*"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: inwx-webhook:domain-solver
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: inwx-webhook:domain-solver
+subjects:
+  - kind: ServiceAccount
+    name: cert-manager # the ServiceAccount of the cert-manager controller
+    namespace: cert-manager
+---
+# 5. The embedded generic API server watches API Priority & Fairness objects.
+#    Without this it works, but logs "forbidden" errors continuously.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: inwx-webhook:flowcontrol-reader
+rules:
+  - apiGroups: ["flowcontrol.apiserver.k8s.io"]
+    resources: ["prioritylevelconfigurations", "flowschemas"]
+    verbs: ["list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: inwx-webhook:flowcontrol-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: inwx-webhook:flowcontrol-reader
+subjects:
+  - kind: ServiceAccount
+    name: inwx-webhook
+    namespace: cert-manager

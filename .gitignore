@@ -1,0 +1,5 @@
+/webhook
+/webhook.exe
+/_out/
+testdata/inwx/secret.yaml
+*.env
