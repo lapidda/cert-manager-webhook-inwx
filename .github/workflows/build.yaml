@@ -5,12 +5,19 @@ on:
     branches: [main]
     tags: ["v*"]
   pull_request:
+  # Sign an image that was pushed before signing existed (or re-sign one), by digest.
+  workflow_dispatch:
+    inputs:
+      digest:
+        description: "Image digest to sign (sha256:...)"
+        required: true
 
 permissions:
   contents: read
 
 jobs:
   test:
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -29,6 +36,7 @@ jobs:
     permissions:
       contents: read
       packages: write # push to ghcr.io with the workflow's own token
+      id-token: write # keyless cosign signing: the workflow's OIDC identity, no key to manage
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -55,6 +63,14 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+      # Keyless: Fulcio issues a short-lived certificate for this workflow's identity
+      # (repo + workflow file + ref), the signature is logged in Rekor and stored next to the
+      # image in ghcr.io. Signed by digest, so every tag of this build is covered.
+      - name: Sign image
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "$IMAGE"
       - name: Image reference
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
@@ -63,5 +79,28 @@ jobs:
           {
             echo "### Image"
             echo "$TAGS"
-            echo "digest: $DIGEST"
+            echo "digest: $DIGEST (signed with cosign, keyless)"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  sign-existing:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # the signature is pushed next to the image
+      id-token: write
+    steps:
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+      - name: Sign image
+        env:
+          DIGEST: ${{ inputs.digest }}
+          REPO: ghcr.io/${{ github.repository }}
+        run: |
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "not a sha256 digest: $DIGEST"; exit 1; }
+          cosign sign --yes "$REPO@$DIGEST"
+          echo "signed $REPO@$DIGEST" >> "$GITHUB_STEP_SUMMARY"

@@ -218,6 +218,27 @@ as `ghcr.io/lapidda/cert-manager-webhook-inwx:vX.Y.Z@sha256:...` in
 `deploy/deployment.yaml`: the tag is for humans, the digest is what the
 kubelet pulls and cannot be moved.
 
+### Signatures
+
+Every image the workflow pushes is signed with [cosign](https://github.com/sigstore/cosign),
+keyless: the signing certificate is issued by Sigstore's Fulcio to this repository's
+`build.yaml` workflow (GitHub Actions OIDC), the signature is recorded in the public Rekor
+log and stored next to the image in GHCR. There is no private key to leak or rotate. An image
+built before signing existed (v0.1.0) was signed afterwards by running the workflow by hand
+(`workflow_dispatch` with its digest).
+
+Verify an image:
+
+```sh
+cosign verify ghcr.io/lapidda/cert-manager-webhook-inwx@sha256:... \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/lapidda/cert-manager-webhook-inwx/\.github/workflows/build\.yaml@refs/(heads/main|tags/v.+)$'
+```
+
+The identity pins the repository *and* the workflow file, so an image signed by any other
+repository or workflow does not pass. A cluster can enforce the same check at admission time,
+e.g. with a Kyverno `ImageValidatingPolicy` using these two values.
+
 ## License
 
 Apache License 2.0, see [LICENSE](LICENSE). The same license as cert-manager and its webhook example.
